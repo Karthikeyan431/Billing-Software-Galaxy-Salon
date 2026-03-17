@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy Salon System Presentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .slide {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+        .slide:hover {
+            transform: translateY(-5px);
+        }
+        .slide-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+        }
+        .slide-header h2 {
+            margin: 0;
+            font-size: 2.2rem;
+        }
+        .slide-body {
+            padding: 25px;
+        }
+        .slide-body ul {
+            list-style: none;
+        }
+        .slide-body li {
+            margin-bottom: 15px;
+            padding-left: 30px;
+            position: relative;
+        }
+        .slide-body li:before {
+            content: "•";
+            color: #667eea;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+        .notes {
+            background-color: #e9ecef;
+            border-top: 1px solid #dee2e6;
+            padding: 20px;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .notes h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .notes ul {
+            margin-top: 10px;
+        }
+        .notes li {
+            margin-bottom: 8px;
+        }
+        .navigation {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .nav-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            margin: 0 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s;
+        }
+        .nav-button:hover {
+            background: #5a67d8;
+        }
+        .slide-counter {
+            display: inline-block;
+            margin: 0 15px;
+            font-weight: bold;
+            color: #6c757d;
+        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            .slide-header h2 {
+                font-size: 1.8rem;
+            }
+            .slide-header,
+            .slide-body {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header style="text-align: center; margin-bottom: 40px;">
+            <h1>Galaxy Salon System Presentation</h1>
+            <p>Comprehensive Billing, Operations, and Analytics Platform</p>
+        </div>
+
+        <div class="slide" id="slide-0">
+            <div class="slide-header">
+                <h2>Galaxy Salon System</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Comprehensive Billing, Operations, and Analytics Platform</li>
+                    <li>Salon + Academy management in one application</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Introduce scope: salon + academy + integrations.</li>
+                    <li>Mention stack: Next.js, Express, MongoDB.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-1">
+            <div class="slide-header">
+                <h2>Problem and Goal</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Pain points: slow billing, manual records, disconnected systems</li>
+                    <li>Goal: one integrated platform for counter, operations, and management</li>
+                    <li>Outcome: faster operations and cleaner business visibility</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Focus on business impact first.</li>
+                    <li>Position this as an operations transformation project.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-2">
+            <div class="slide-header">
+                <h2>System Architecture</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Frontend: Next.js Pages Router + React</li>
+                    <li>Backend: Express API with JWT and validators</li>
+                    <li>Database: MongoDB with Mongoose</li>
+                    <li>Integrations: Razorpay, WhatsApp Cloud API, thermal print, barcode</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Explain end-to-end request lifecycle from UI to DB.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-3">
+            <div class="slide-header">
+                <h2>Core Modules</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>POS and Billing</li>
+                    <li>Appointments</li>
+                    <li>Customers and Loyalty</li>
+                    <li>Products and Inventory</li>
+                    <li>Services and Employees</li>
+                    <li>Academy (Courses, Students)</li>
+                    <li>Reports and AI Insights</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Emphasize shared entities across modules.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-4">
+            <div class="slide-header">
+                <h2>POS Workflow</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Select or create customer</li>
+                    <li>Add services and products (scanner/manual)</li>
+                    <li>Apply discount and tax</li>
+                    <li>Choose payment mode</li>
+                    <li>Create bill and update stock/loyalty</li>
+                    <li>Print and optionally send WhatsApp receipt</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>POS speed and reliability are central to adoption.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-5">
+            <div class="slide-header">
+                <h2>Payment Flow</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Cash flow completes bill directly</li>
+                    <li>UPI/Card flow uses Razorpay order creation</li>
+                    <li>Callback signature is verified on backend</li>
+                    <li>Split payment fields are supported in bill schema</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Security check is HMAC signature verification.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-6">
+            <div class="slide-header">
+                <h2>Appointments and Reminders</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Book appointment with customer, service, date, time</li>
+                    <li>Track status from scheduled to completion/cancellation</li>
+                    <li>Cron job runs daily at 8:00 AM</li>
+                    <li>WhatsApp reminders sent for next-day appointments</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Point out reminderSent flag for duplicate prevention.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-7">
+            <div class="slide-header">
+                <h2>Inventory and Barcode</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Barcode lookup adds products quickly in POS</li>
+                    <li>Stock decremented on bill creation</li>
+                    <li>Low-stock endpoint helps reorder planning</li>
+                    <li>Stock restored when bill is cancelled</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Data consistency between billing and inventory is a key strength.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-8">
+            <div class="slide-header">
+                <h2>Employee and Academy</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Employee setup includes role, salary, commission</li>
+                    <li>Performance endpoint aggregates billed contribution</li>
+                    <li>Academy supports courses, students, fee ledger, attendance</li>
+                    <li>Certificate issuance completes student lifecycle</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>App supports both retail services and education operations.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-9">
+            <div class="slide-header">
+                <h2>Reporting and KPIs</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Dashboard summary for daily and monthly health</li>
+                    <li>Sales trends with group-by periods</li>
+                    <li>Top services and products</li>
+                    <li>Payment method mix and employee performance</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Reports drive pricing and staffing decisions.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-10">
+            <div class="slide-header">
+                <h2>AI Module</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Revenue prediction</li>
+                    <li>Churn-risk customer identification</li>
+                    <li>Service recommendations</li>
+                    <li>Peak-hour and inventory insights</li>
+                    <li>Rule-based chatbot endpoint for customer FAQs</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Current AI is deterministic/statistical and can evolve later.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-11">
+            <div class="slide-header">
+                <h2>Security and Access Control</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>JWT authentication for protected APIs</li>
+                    <li>Role control: admin vs staff</li>
+                    <li>Request validation via express-validator</li>
+                    <li>Helmet, CORS, and rate limiting globally enabled</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Call out admin-only endpoints for critical operations.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-12">
+            <div class="slide-header">
+                <h2>Deployment Blueprint</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Frontend deployment on Vercel</li>
+                    <li>Backend deployment on Render or Railway</li>
+                    <li>Database on MongoDB Atlas</li>
+                    <li>Env-var driven secrets and integration setup</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Mention post-deploy smoke test checklist.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-13">
+            <div class="slide-header">
+                <h2>Known Gaps and Roadmap</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Add appointment slot conflict prevention</li>
+                    <li>Align AI analytics fields with current schema</li>
+                    <li>Improve password policy and recovery flow</li>
+                    <li>Add centralized monitoring and audit logging</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Present gaps as planned hardening, not system failure.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-14">
+            <div class="slide-header">
+                <h2>Closing and Next Steps</h2>
+            </div>
+            <div class="slide-body">
+                <ul>
+                    <li>Deliverables: workflow manual, full documentation, presentation deck</li>
+                    <li>Next: stakeholder review and UAT</li>
+                    <li>Then: staged rollout and production hardening</li>
+                </ul>
+            </div>
+            <div class="notes">
+                <h3>Speaker Notes:</h3>
+                <ul>
+                    <li>Invite operational and implementation questions.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="navigation">
+            <button class="nav-button" onclick="prevSlide()">Previous</button>
+            <span class="slide-counter" id="slideCounter">1 / 15</span>
+            <button class="nav-button" onclick="nextSlide()">Next</button>
+        </div>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const totalSlides = 15;
+        const slides = document.querySelectorAll('.slide');
+
+        function showSlide(index) {
+            slides.forEach((slide, i) => {
+                if (i === index) {
+                    slide.style.display = 'block';
+                } else {
+                    slide.style.display = 'none';
+                }
+            });
+            document.getElementById('slideCounter').textContent = (index + 1) + ' / ' + totalSlides;
+        }
+
+        function nextSlide() {
+            currentSlide = (currentSlide + 1) % totalSlides;
+            showSlide(currentSlide);
+        }
+
+        function prevSlide() {
+            currentSlide = (currentSlide - 1 + totalSlides) % totalSlides;
+            showSlide(currentSlide);
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+                prevSlide();
+            }
+        });
+
+        // Show first slide
+        showSlide(0);
+    </script>
+</body>
+</html>
