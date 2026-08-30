@@ -4,14 +4,41 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const { auth } = require('../middleware/auth');
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+/**
+ * Razorpay is constructed lazily.
+ *
+ * `new Razorpay({key_id: undefined})` THROWS ("`key_id` or `oauthToken` is mandatory").
+ * Doing that at module load meant that if RAZORPAY_KEY_ID was missing from the Render
+ * dashboard, the whole process died during require() — before app.listen() ever ran — and
+ * Render failed the deploy with "No open ports detected". Payments are optional, so a
+ * missing key must degrade to a 503 on /api/payment/* rather than take the API down.
+ */
+let razorpayClient = null;
+
+const getRazorpay = () => {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) return null;
+  if (!razorpayClient) {
+    razorpayClient = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+  }
+  return razorpayClient;
+};
+
+const requireRazorpay = (req, res, next) => {
+  if (!getRazorpay()) {
+    return res.status(503).json({
+      error: 'Online payments are not configured on this server.',
+      code: 'PAYMENT_NOT_CONFIGURED',
+    });
+  }
+  next();
+};
 
 // @route   POST /api/payment/create-order
 // @desc    Create a Razorpay order
-router.post('/create-order', auth, async (req, res) => {
+router.post('/create-order', auth, requireRazorpay, async (req, res) => {
   try {
     const { amount } = req.body;
 
@@ -25,7 +52,7 @@ router.post('/create-order', auth, async (req, res) => {
       receipt: `rcpt_${Date.now()}`,
     };
 
-    const order = await razorpay.orders.create(options);
+    const order = await getRazorpay().orders.create(options);
     res.json({
       orderId: order.id,
       amount: order.amount,
@@ -40,7 +67,7 @@ router.post('/create-order', auth, async (req, res) => {
 
 // @route   POST /api/payment/verify
 // @desc    Verify Razorpay payment signature
-router.post('/verify', auth, async (req, res) => {
+router.post('/verify', auth, requireRazorpay, async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 

@@ -1,7 +1,7 @@
 # Galaxy Salon System - FREE Deployment Guide
 
 **Updated:** March 2026  
-**Platform:** Vercel (Frontend) + Railway (Backend) + MongoDB Atlas (Database)  
+**Platform:** Vercel (Frontend) + Render (Backend) + MongoDB Atlas (Database)  
 **Cost:** ~$0-5/month (free tier coverage)
 
 ---
@@ -11,7 +11,7 @@
 - [ ] Step 1: Set up MongoDB Atlas
 - [ ] Step 2: Update .env for production
 - [ ] Step 3: Push code to GitHub
-- [ ] Step 4: Deploy backend to Railway
+- [ ] Step 4: Deploy backend to Render
 - [ ] Step 5: Deploy frontend to Vercel
 - [ ] Step 6: Connect frontend to backend
 - [ ] Step 7: Test production URLs
@@ -163,49 +163,101 @@ git push -u origin main
 
 ---
 
-## 🚀 Step 4: Deploy Backend to Railway
+## 🚀 Step 4: Deploy Backend to Render
 
-### 4.1 Create Railway Account
+> This project is deployed on **Render**. The old Railway instructions in this guide were
+> wrong for Render in two ways that both cause a **failed deploy**, so read this carefully.
 
-1. Go to https://railway.app
-2. Click **"Sign In with GitHub"**
-3. Authorize Railway to access your GitHub
-4. Click **"Create New Project"**
+### 4.1 The single most important setting: Root Directory
 
-### 4.2 Deploy from GitHub
+The git repository root contains **only** the `galaxy-salon-system/` folder — there is no
+`package.json` at the repo root. If Render builds from the root it fails with:
 
-1. Choose **"Deploy from GitHub repo"**
-2. Select your `galaxy-salon-system` repository
-3. Choose **"Deploy"**
-4. Railway will auto-detect Node.js project
-
-### 4.3 Configure Environment Variables
-
-1. In Railway dashboard, click **"Variables"**
-2. Click **"RAW Editor"**
-3. Paste all your `.env` variables (from Step 2.1)
-4. Click **"Save"**
-
-### 4.4 Set Start Command
-
-Railway auto-detects from `package.json`. If not:
-
-1. Click **"Settings"**
-2. Find **"Environments"** → **Start Command**
-3. Set to: `npm run seed && node index.js`
-   (OR just `node index.js` if database is already seeded)
-
-### 4.5 Get Backend URL
-
-1. In Railway dashboard, click on your project
-2. Go to **"Deployments"**
-3. Find **"Public URL"** (looks like `https://galaxy-salon-prod.railway.app`)
-4. Copy this URL - you'll need it for frontend
-
-**Your Backend URL:**
 ```
-https://galaxy-salon-prod.railway.app
+npm error code ENOENT
+npm error path /opt/render/project/src/package.json
+npm error enoent Could not read package.json
 ```
+
+So the **Root Directory must be set**, to:
+
+```
+galaxy-salon-system/server
+```
+
+### 4.2 Create the service
+
+1. Go to https://render.com → **New +** → **Web Service**
+2. Connect the GitHub repo `Billing-Software-Galaxy-Salon`
+3. Configure:
+
+| Setting | Value |
+|---|---|
+| Root Directory | `galaxy-salon-system/server` |
+| Runtime | Node |
+| Build Command | `npm ci --omit=dev` |
+| Start Command | `node index.js` |
+| Health Check Path | `/api/health` |
+| Region | the one closest to your Atlas cluster |
+
+Alternatively, use the **`render.yaml` Blueprint at the repository root**, which already
+encodes all of the above: **New +** → **Blueprint** → select the repo.
+
+### 4.3 Environment variables
+
+Add these under **Environment**:
+
+| Key | Value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `MONGODB_URI` | your Atlas connection string |
+| `JWT_SECRET` | a long random string (32+ chars) |
+| `JWT_EXPIRES_IN` | `7d` |
+| `CORS_ORIGINS` | your Vercel frontend origin, **no trailing slash** |
+| `TZ` | `Asia/Kolkata` |
+| `KEEPALIVE_URL` | `https://<your-service>.onrender.com/api/health` |
+| `ENABLE_API_DOCS` | `false` |
+
+**Do NOT set `PORT`.** Render injects it. Hardcoding `PORT=5000` means Render's port scan
+never finds an open port and the deploy fails with **"No open ports detected"**.
+
+Razorpay and WhatsApp variables are optional — the API now boots without them and returns
+`503` on those routes instead of crashing at startup.
+
+### 4.4 Do NOT put the seeder in the start command
+
+The old guide suggested `npm run seed && node index.js`. Do not do that on Render: the
+seeder calls `process.exit()`, so on every container start (including every wake from
+sleep) it can stop the server from ever starting. Run the seed **once**, manually, from
+the Render **Shell** tab: `npm run seed`.
+
+### 4.5 Get your backend URL
+
+Render gives you `https://<your-service>.onrender.com`. The API base your frontend needs is
+that URL **plus `/api`**:
+
+```
+https://<your-service>.onrender.com/api
+```
+
+Verify it before touching the frontend:
+
+```bash
+curl https://<your-service>.onrender.com/api/health
+# {"status":"ok","db":"connected","uptime":12,...}
+```
+
+If `db` is not `connected`, fix Atlas access (Step 1.4) before going further.
+
+### 4.6 Free tier: expect a cold start
+
+A free Render service **spins down after ~15 minutes of inactivity**, and the next request
+takes ~50 seconds while it wakes. This is the platform, not a bug in the code.
+
+- Setting `KEEPALIVE_URL` (Step 4.3) makes the service ping itself every 14 minutes so it
+  never sleeps. This uses roughly all 750 free instance-hours per month.
+- For a salon actually billing customers, upgrade the service to a paid instance. A POS
+  that takes 50 seconds to load the first bill of the day is not usable.
 
 ---
 
@@ -291,7 +343,7 @@ Password: admin123456
 
 **Check Frontend Environment Variable:**
 1. Go to Vercel project → **"Settings"** → **"Environment Variables"**
-2. Verify `NEXT_PUBLIC_API_URL` points to Railway backend
+2. Verify `NEXT_PUBLIC_API_URL` points to the Render backend, and ends with `/api`
 3. Should have `/api` at the end
 4. Redeploy after changes
 
@@ -301,10 +353,10 @@ Password: admin123456
 
 ### Issue: "Database connection failed"
 
-1. Check `MONGODB_URI` in Railway environment variables
+1. Check `MONGODB_URI` in the Render dashboard → Environment
 2. Verify special characters are URL-encoded
-3. Check MongoDB Atlas whitelist includes Railway IPs
-4. Screenshot the error from Railway logs
+3. Check the MongoDB Atlas IP access list allows `0.0.0.0/0` (Render free tier has no static IP)
+4. Screenshot the error from the Render **Logs** tab
 
 ### Issue: "Build failed on Vercel"
 
@@ -328,9 +380,9 @@ Check build logs:
 
 ## 📊 Monitor Production
 
-### Railway Monitoring
+### Render Monitoring
 
-1. Go to Railway dashboard
+1. Go to the Render dashboard
 2. Click your project
 3. View:
    - **Logs** - Application console output
@@ -351,10 +403,12 @@ Check build logs:
 ## 🔐 Production Security Checklist
 
 - [ ] Change default admin password immediately
-- [ ] Enable HTTPS (automatic with Vercel + Railway)
+- [ ] Enable HTTPS (automatic with Vercel + Render)
 - [ ] Set strong `JWT_SECRET`
 - [ ] Use production MongoDB URI
-- [ ] Enable MongoDB IP whitelist (specific IPs only)
+- [ ] MongoDB IP access list: Render's free tier has **no static outbound IP**, so a
+      specific-IP allowlist will break every connection. Use `0.0.0.0/0` with a strong
+      database password, or upgrade to a paid Render plan and use its static IPs.
 - [ ] Set `NODE_ENV=production`
 - [ ] Review `CORS_ORIGINS` setting
 - [ ] Set rate limiting to `RATE_LIMIT_MAX=100`
@@ -367,7 +421,7 @@ Check build logs:
 
 | Service | Free Tier | Cost |
 |---------|----------|------|
-| **Railway** | $5/month credit | ~$0-5 |
+| **Render** | Free tier (sleeps after 15 min idle) | $0, or $7/mo to stay awake |
 | **Vercel** | 100GB bandwidth/month | Free |
 | **MongoDB Atlas** | 512MB storage | Free |
 | **GitHub** | Public repos | Free |
@@ -380,7 +434,7 @@ Check build logs:
 
 1. **Add Custom Domain** (optional)
    - Vercel: Add domain in Settings
-   - Railway: Configure custom domain
+   - Render: Settings → Custom Domains
    - MongoDB: Update IP whitelist if needed
 
 2. **Set Up Email Notifications**
@@ -406,7 +460,7 @@ Check build logs:
 
 ## 📞 Support
 
-- **Railway Docs:** https://docs.railway.app
+- **Render Docs:** https://render.com/docs
 - **Vercel Docs:** https://vercel.com/docs
 - **MongoDB Atlas Docs:** https://docs.atlas.mongodb.com
 - **Next.js Deployment:** https://nextjs.org/docs/deployment

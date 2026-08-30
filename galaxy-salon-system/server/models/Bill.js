@@ -47,6 +47,11 @@ billSchema.pre('save', async function (next) {
   next();
 });
 
+// Serves every report aggregation and the dashboard, which all match on
+// { status: 'completed', createdAt: {$gte,$lte} }. Without this they COLLSCAN.
+billSchema.index({ status: 1, createdAt: -1 });
+// Employee performance report groups by the employee on each service line.
+billSchema.index({ 'services.employee': 1 });
 billSchema.index({ createdAt: -1 });
 billSchema.index({ customer: 1 });
 

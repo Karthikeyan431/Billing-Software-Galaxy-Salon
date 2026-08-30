@@ -1,4 +1,5 @@
 const Product = require('../models/Product');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 exports.getAll = async (req, res) => {
   try {
@@ -8,9 +9,10 @@ exports.getAll = async (req, res) => {
     if (category) query.category = category;
     if (lowStock === 'true') query.$expr = { $lte: ['$stock', '$lowStockThreshold'] };
     if (search) {
+      const term = escapeRegex(search);
       query.$or = [
-        { productName: { $regex: search, $options: 'i' } },
-        { barcode: { $regex: search, $options: 'i' } },
+        { productName: { $regex: term, $options: 'i' } },
+        { barcode: { $regex: term, $options: 'i' } },
       ];
     }
 

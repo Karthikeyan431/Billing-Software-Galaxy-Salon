@@ -14,44 +14,50 @@ exports.getDashboard = async (req, res) => {
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
 
-    // Today's stats
-    const todayBills = await Bill.find({ createdAt: { $gte: today, $lt: tomorrow }, status: 'completed' });
-    const todayRevenue = todayBills.reduce((sum, b) => sum + b.totalAmount, 0);
+    // Sum revenue in the database instead of loading every bill of the month into Node and
+    // reducing it here. Both aggregations are served by the { status, createdAt } index.
+    const revenueFor = (from, to) => Bill.aggregate([
+      { $match: { status: 'completed', createdAt: { $gte: from, $lte: to } } },
+      { $group: { _id: null, revenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
+    ]);
 
-    // Month stats
-    const monthBills = await Bill.find({ createdAt: { $gte: monthStart, $lte: monthEnd }, status: 'completed' });
-    const monthRevenue = monthBills.reduce((sum, b) => sum + b.totalAmount, 0);
-
-    // Today's appointments
-    const todayAppointments = await Appointment.countDocuments({
-      date: { $gte: today, $lt: tomorrow },
-      status: { $nin: ['cancelled'] },
-    });
-
-    // Low stock products
-    const lowStockCount = await Product.countDocuments({
-      $expr: { $lte: ['$stock', '$lowStockThreshold'] },
-      isActive: true,
-    });
-
-    // Total customers
-    const totalCustomers = await Customer.countDocuments();
-
-    // Total employees
-    const activeEmployees = await Employee.countDocuments({ isActive: true });
+    // Run everything concurrently. These were 7 sequential awaits, so the endpoint cost
+    // 7 Atlas round trips end to end — painful on a free-tier instance far from the cluster.
+    const [
+      todayAgg,
+      monthAgg,
+      todayAppointments,
+      lowStockCount,
+      totalCustomers,
+      activeEmployees,
+    ] = await Promise.all([
+      revenueFor(today, new Date(tomorrow.getTime() - 1)),
+      revenueFor(monthStart, monthEnd),
+      Appointment.countDocuments({
+        date: { $gte: today, $lt: tomorrow },
+        status: { $nin: ['cancelled'] },
+      }),
+      Product.countDocuments({
+        $expr: { $lte: ['$stock', '$lowStockThreshold'] },
+        isActive: true,
+      }),
+      Customer.estimatedDocumentCount(),
+      Employee.countDocuments({ isActive: true }),
+    ]);
 
     res.json({
-      todayRevenue,
-      todayBillCount: todayBills.length,
-      monthRevenue,
-      monthBillCount: monthBills.length,
+      todayRevenue: todayAgg[0]?.revenue || 0,
+      todayBillCount: todayAgg[0]?.count || 0,
+      monthRevenue: monthAgg[0]?.revenue || 0,
+      monthBillCount: monthAgg[0]?.count || 0,
       todayAppointments,
       lowStockCount,
       totalCustomers,
       activeEmployees,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[reports] dashboard failed:', error);
+    res.status(500).json({ error: 'Failed to load dashboard' });
   }
 };
 

@@ -1,12 +1,18 @@
 const axios = require('axios');
 
-const API_URL = process.env.WHATSAPP_API_URL;
+const API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v18.0';
 const PHONE_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 
+// The .env.example placeholders ("your-access-token", "your-phone-number-id") are truthy,
+// so the "not configured" guard below used to pass and every bill made a real outbound call
+// that always failed — seconds of latency on the POS critical path for a guaranteed error.
+const isPlaceholder = (v) => !v || /^your-|^changeme|^xxx/i.test(v);
+const isConfigured = () => !isPlaceholder(TOKEN) && !isPlaceholder(PHONE_ID);
+
 const sendMessage = async (to, text) => {
-  if (!TOKEN || !PHONE_ID) {
-    console.log('WhatsApp API not configured. Message:', text);
+  if (!isConfigured()) {
+    console.log('[whatsapp] Not configured; skipping send. Message:', text);
     return { success: false, reason: 'WhatsApp API not configured' };
   }
 
@@ -27,6 +33,9 @@ const sendMessage = async (to, text) => {
           Authorization: `Bearer ${TOKEN}`,
           'Content-Type': 'application/json',
         },
+        // Without a timeout this outbound call can hang until Render's 100s request
+        // limit, blocking the bill-creation response behind it.
+        timeout: 8000,
       }
     );
     return { success: true, messageId: response.data.messages?.[0]?.id };

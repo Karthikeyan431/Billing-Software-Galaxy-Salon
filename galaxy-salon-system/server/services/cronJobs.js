@@ -39,9 +39,12 @@ const start = () => {
     } catch (error) {
       console.error('[CRON] Reminder error:', error.message);
     }
+  }, {
+    // Containers run in UTC, so '0 8 * * *' fired at 1:30 PM IST, not 8 AM local.
+    timezone: process.env.TZ || 'Asia/Kolkata',
   });
 
-  console.log('[CRON] Scheduled jobs started.');
+  console.log(`[CRON] Scheduled jobs started (timezone: ${process.env.TZ || 'Asia/Kolkata'}).`);
 };
 
 module.exports = { start };

@@ -15,4 +15,7 @@ const productSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
+// List endpoints sort by createdAt desc; unindexed sorts block on Render's shared CPU.
+productSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Product', productSchema);

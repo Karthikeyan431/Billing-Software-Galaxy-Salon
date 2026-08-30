@@ -22,4 +22,7 @@ const studentSchema = new mongoose.Schema({
   status: { type: String, enum: ['active', 'completed', 'dropped'], default: 'active' },
 }, { timestamps: true });
 
+// List endpoints sort by createdAt desc; unindexed sorts block on Render's shared CPU.
+studentSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Student', studentSchema);

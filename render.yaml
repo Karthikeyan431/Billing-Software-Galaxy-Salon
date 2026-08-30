@@ -1,0 +1,71 @@
+# Render Blueprint for the Galaxy Salon backend API.
+#
+# IMPORTANT — why rootDir looks unusual:
+# The git repository root is "D:/Billing Software", and it contains ONLY the
+# galaxy-salon-system/ folder. There is no package.json at the repo root at all, so a
+# default Render build (npm install at the root) fails. The API is two levels down.
+#
+# This file must stay at the REPOSITORY root for Render to read it as a Blueprint.
+services:
+  - type: web
+    name: galaxy-salon-api
+    runtime: node
+    plan: free
+    # Pick the region closest to your MongoDB Atlas cluster. Every query pays this round
+    # trip, so a mismatched region silently doubles or triples API latency.
+    region: singapore
+    rootDir: galaxy-salon-system/server
+    buildCommand: npm ci --omit=dev
+    startCommand: node index.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # PORT is injected by Render. Never set it yourself — a hardcoded PORT makes Render's
+      # port scan fail with "No open ports detected" and the deploy is marked failed.
+
+      - key: MONGODB_URI
+        sync: false # set in the dashboard; never commit the connection string
+
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+
+      # Comma-separated allowlist. Must include your deployed frontend's exact origin,
+      # with no trailing slash, e.g. https://galaxy-salon.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+
+      # Keeps the free instance from spinning down. Set to this service's own health URL:
+      #   https://<your-service>.onrender.com/api/health
+      - key: KEEPALIVE_URL
+        sync: false
+
+      # Swagger parses source files at boot; leave off in production.
+      - key: ENABLE_API_DOCS
+        value: "false"
+
+      - key: TZ
+        value: Asia/Kolkata
+
+      - key: BUSINESS_NAME
+        value: Galaxy Unisex Saloon & Beauty Academy
+      - key: BUSINESS_ADDRESS
+        sync: false
+      - key: BUSINESS_PHONE
+        sync: false
+
+      # Optional integrations. The API now boots fine without them and returns 503 on the
+      # relevant routes instead of crashing the whole process at startup.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: WHATSAPP_API_URL
+        value: https://graph.facebook.com/v18.0
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false

@@ -2,3 +2,10 @@ node_modules/
 .env
 dist/
 *.log
+
+# Never commit env files or editor/agent backups — .env was ignored but .env.bak was not,
+# which would have pushed the Atlas URI, JWT secret and Razorpay secret to GitHub.
+.env.*
+!.env.example
+*.bak
+*.orig

@@ -15,4 +15,7 @@ const employeeSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
+// List endpoints sort by createdAt desc; unindexed sorts block on Render's shared CPU.
+employeeSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Employee', employeeSchema);

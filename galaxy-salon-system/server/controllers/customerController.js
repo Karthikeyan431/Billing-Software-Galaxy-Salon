@@ -1,4 +1,5 @@
 const Customer = require('../models/Customer');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 exports.getAll = async (req, res) => {
   try {
@@ -6,9 +7,10 @@ exports.getAll = async (req, res) => {
     const query = {};
 
     if (search) {
+      const term = escapeRegex(search);
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
+        { name: { $regex: term, $options: 'i' } },
+        { phone: { $regex: term, $options: 'i' } },
       ];
     }
 
@@ -38,7 +40,7 @@ exports.getById = async (req, res) => {
 exports.searchByPhone = async (req, res) => {
   try {
     const { phone } = req.params;
-    const customer = await Customer.findOne({ phone: { $regex: phone, $options: 'i' } });
+    const customer = await Customer.findOne({ phone: { $regex: escapeRegex(phone), $options: 'i' } });
     if (!customer) return res.status(404).json({ error: 'Customer not found' });
     res.json({ customer });
   } catch (error) {

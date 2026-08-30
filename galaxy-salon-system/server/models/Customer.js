@@ -12,6 +12,7 @@ const customerSchema = new mongoose.Schema({
   notes: { type: String },
 }, { timestamps: true });
 
+customerSchema.index({ createdAt: -1 });
 customerSchema.index({ name: 'text' });
 
 module.exports = mongoose.model('Customer', customerSchema);
