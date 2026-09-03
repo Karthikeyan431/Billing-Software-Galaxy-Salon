@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../utils/helpers';
+import OfflineIndicator from '../components/pwa/OfflineIndicator';
+import InstallAppButton from '../components/pwa/InstallAppButton';
 
 const menuItems = [
   { name: 'Dashboard', path: '/', icon: '📊' },
@@ -93,7 +95,18 @@ export default function DashboardLayout({ children }) {
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <div className="flex-1" />
+          <div className="flex-1 flex items-center justify-end gap-3">
+            {/* The offline indicator stays visible at every breakpoint - knowing you are
+                offline matters most on a phone. The install button hides below sm because
+                the date already competes for room on small screens. */}
+            <OfflineIndicator />
+            <InstallAppButton
+              className="hidden sm:inline-flex"
+              variant="outline"
+              size="sm"
+              label="Install App"
+            />
+          </div>
           <span className="text-xs text-gray-400">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
         </header>
 

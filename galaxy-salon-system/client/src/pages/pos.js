@@ -8,9 +8,30 @@ import Modal from '../components/ui/Modal';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { useAuth } from '../hooks/useAuth';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
-import { customerService, serviceService, productService, billService, employeeService, whatsappService, paymentService } from '../services/dataService';
+import { customerService, productService, billService, whatsappService, paymentService, offlineAwareService } from '../services/dataService';
+import { generateClientRef, queueBill } from '../lib/syncManager';
 import { formatCurrency, cn } from '../utils/helpers';
 import toast from 'react-hot-toast';
+
+// Cache timestamps come out of IndexedDB and can be missing on an old entry — fall back to
+// a vague label rather than telling the cashier the catalogue is from "Invalid Date".
+function formatCacheTime(cachedAt) {
+  const when = cachedAt ? new Date(cachedAt) : null;
+  if (!when || Number.isNaN(when.getTime())) return 'an earlier session';
+  return when.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Receipt shape for a bill that so far only exists in the local queue. It mirrors what the
+// receipt modal, printReceipt and printThermal already read (createdAt parseable by Date,
+// money as plain numbers), so an offline bill prints without special-casing every field.
+function buildOfflineBill(entry, payload) {
+  return {
+    ...(entry?.payload || payload),
+    billNumber: entry?.localBillNumber || 'OFFLINE',
+    createdAt: entry?.createdAt || new Date().toISOString(),
+    _offline: true,
+  };
+}
 
 export default function POSPage() {
   const { user, loading: authLoading } = useAuth();
@@ -43,6 +64,11 @@ export default function POSPage() {
   // Barcode
   const barcodeRef = useRef(null);
 
+  // One clientRef per checkout attempt. If a request times out we cannot know whether the
+  // server created the bill, so a retry — or the copy we queue offline — must carry the SAME
+  // ref for the server's idempotency check to collapse the duplicate instead of billing twice.
+  const checkoutRefRef = useRef(null);
+
   // Filters
   const [serviceCategory, setServiceCategory] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -57,19 +83,22 @@ export default function POSPage() {
   const [paymentVerifying, setPaymentVerifying] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState('pending'); // pending | verifying | success
 
-  // Load data
+  // Load data — served from the network when possible, from the IndexedDB cache when not
   useEffect(() => {
     if (!authLoading && !user) { router.push('/login'); return; }
     if (user) {
-      Promise.all([
-        serviceService.getAll({ active: true }),
-        productService.getAll({ limit: 200 }),
-        employeeService.getAll({ active: true }),
-      ]).then(([sRes, pRes, eRes]) => {
-        setServices(sRes.data.services || []);
-        setProducts(pRes.data.products || []);
-        setEmployees(eRes.data.employees || []);
-      }).catch(() => toast.error('Failed to load data'))
+      offlineAwareService.loadPosCatalogue()
+        .then((catalogue) => {
+          setServices(catalogue.services);
+          setProducts(catalogue.products);
+          setEmployees(catalogue.employees);
+          if (catalogue.fromCache) {
+            // Not an error — the till is usable, the cashier just needs to know the prices
+            // and stock they are looking at are a snapshot, not live.
+            toast(`Showing offline catalogue from ${formatCacheTime(catalogue.cachedAt)}`, { icon: '📴' });
+          }
+        })
+        .catch(() => toast.error('Failed to load data'))
         .finally(() => setLoading(false));
     }
   }, [user, authLoading, router]);
@@ -228,6 +257,11 @@ export default function POSPage() {
     if (paymentMethod === 'cash') {
       generateBill();
     } else {
+      // Razorpay needs the network end to end (order create + signature verify). Queueing a
+      // UPI/Card bill offline would record money that was never actually collected, so block it.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        return toast.error('No connection — UPI/Card needs internet. Take cash, or wait for the connection to return.');
+      }
       openRazorpay();
     }
   };
@@ -311,36 +345,99 @@ export default function POSPage() {
     }
   };
 
+  // Clear the till for the next customer — shared by the online and offline checkout paths
+  const resetBill = () => {
+    setBillServices([]);
+    setBillProducts([]);
+    setDiscount(0);
+    setTaxRate(0);
+    setSelectedCustomer(null);
+    setCustomerSearch('');
+    setPaymentMethod('cash');
+  };
+
   // Generate bill (razorpayPaymentId is optional, passed for UPI/Card)
   const generateBill = async (razorpayPaymentId) => {
     if (billServices.length === 0 && billProducts.length === 0) {
       return toast.error('Add at least one item to the bill');
     }
 
-    try {
-      const billData = {
-        customer: selectedCustomer?._id,
-        customerName: selectedCustomer?.name || 'Walk-in',
-        customerPhone: selectedCustomer?.phone || '',
-        services: billServices.map(({ service, serviceName, price, employee, employeeName }) => ({
-          service, serviceName, price, employee, employeeName,
-        })),
-        products: billProducts.map(({ product, productName, price, quantity }) => ({
-          product, productName, price, quantity,
-        })),
-        subtotal,
-        discount: discountAmount,
-        discountType,
-        tax: taxAmount,
-        taxRate,
-        totalAmount,
-        paymentMethod,
-      };
+    // Generated once and held until this checkout actually settles, so pressing Generate
+    // again after a timeout reuses the ref instead of creating a second bill.
+    if (!checkoutRefRef.current) checkoutRefRef.current = generateClientRef();
 
+    const billData = {
+      customer: selectedCustomer?._id,
+      customerName: selectedCustomer?.name || 'Walk-in',
+      customerPhone: selectedCustomer?.phone || '',
+      services: billServices.map(({ service, serviceName, price, employee, employeeName }) => ({
+        service, serviceName, price, employee, employeeName,
+      })),
+      products: billProducts.map(({ product, productName, price, quantity }) => ({
+        product, productName, price, quantity,
+      })),
+      subtotal,
+      discount: discountAmount,
+      discountType,
+      tax: taxAmount,
+      taxRate,
+      totalAmount,
+      paymentMethod,
+      clientRef: checkoutRefRef.current,
+    };
+
+    // Park the bill in the local queue and hand over a provisional receipt. Used both when we
+    // already know we are offline and when a request never reached the server.
+    const commitOffline = async () => {
+      // queueBill throws if the device could not actually persist the bill, so everything
+      // below only runs once the sale is genuinely on disk. The ref is cleared LAST, at the
+      // very end: on a throw it must survive so pressing Generate again retries the same
+      // bill under the same clientRef instead of minting a second one.
+      const entry = await queueBill(billData);
+      setLastBill(buildOfflineBill(entry, billData));
+      setShowReceipt(true);
+
+      // Optimistically take the sold units out of the in-memory catalogue so the till stops
+      // offering stock it has already sold. The server reconciles real stock when this bill
+      // syncs, and the next catalogue load overwrites these numbers anyway.
+      if (billData.products.length > 0) {
+        setProducts(prev => prev.map(p => {
+          const sold = billData.products.find(item => item.product === p._id);
+          return sold ? { ...p, stock: Math.max(0, (p.stock || 0) - sold.quantity) } : p;
+        }));
+      }
+
+      // No WhatsApp receipt here: there is no network to send it on, and the bill has no
+      // final bill number to quote yet. It is skipped entirely rather than queued.
+      resetBill();
+      checkoutRefRef.current = null;
+      toast.success('Saved offline — will sync automatically');
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      try {
+        await commitOffline();
+      } catch (queueErr) {
+        // The bill is NOT saved anywhere. Say so plainly and leave the cart untouched so the
+        // cashier can take payment on paper rather than believing the sale was recorded.
+        console.error('Failed to queue offline bill:', queueErr);
+        toast.error(
+          (queueErr?.message || 'Could not save this bill on the device') +
+          ' Write this sale down — it has not been saved.',
+          { duration: 8000 }
+        );
+      }
+      return;
+    }
+
+    try {
       const { data } = await billService.create(billData);
+      checkoutRefRef.current = null;
       setLastBill(data.bill);
       setShowReceipt(true);
-      toast.success(`Bill #${data.bill.billNumber} created!`);
+      toast.success(data.duplicate
+        ? `Bill #${data.bill.billNumber} already recorded`
+        : `Bill #${data.bill.billNumber} created!`);
 
       // Send WhatsApp receipt if customer has phone
       if (selectedCustomer?.phone) {
@@ -352,15 +449,28 @@ export default function POSPage() {
         } catch { /* WhatsApp send is best-effort */ }
       }
 
-      // Reset
-      setBillServices([]);
-      setBillProducts([]);
-      setDiscount(0);
-      setTaxRate(0);
-      setSelectedCustomer(null);
-      setCustomerSearch('');
-      setPaymentMethod('cash');
+      resetBill();
     } catch (err) {
+      // No err.response means the request never reached the server (dropped connection,
+      // timeout), so this bill's fate is unknown — queue it under the same clientRef and let
+      // the server dedupe on sync. A real rejection (400 insufficient stock, etc.) is NOT
+      // queued: the server has already refused it, so retrying forever would never succeed.
+      if (!err.response) {
+        try {
+          await commitOffline();
+          return;
+        } catch (queueErr) {
+          // Could not reach the server AND could not save locally — fall through to the
+          // error toast below with the storage reason, not a generic "failed to create".
+          console.error('Failed to queue offline bill:', queueErr);
+          toast.error(
+            (queueErr?.message || 'Could not save this bill on the device') +
+            ' Write this sale down — it has not been saved.',
+            { duration: 8000 }
+          );
+          return;
+        }
+      }
       toast.error(err.response?.data?.error || 'Failed to create bill');
     }
   };
@@ -405,6 +515,17 @@ export default function POSPage() {
 
     const paymentLabel = bill.paymentMethod === 'cash' ? 'CASH' : bill.paymentMethod === 'upi' ? 'UPI' : 'CARD';
 
+    // A queued bill carries a provisional number only — mark it loudly so a printed copy is
+    // never mistaken for a finalised, server-numbered invoice.
+    const invoiceNoLabel = bill._offline ? 'Provisional No' : 'Invoice No';
+    const invoiceNoColor = bill._offline ? '#b45309' : '#4f46e5';
+    const offlineNotice = bill._offline
+      ? `<div style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:20px;text-align:center;">
+           <div style="font-size:14px;font-weight:800;letter-spacing:0.5px;">OFFLINE — PENDING SYNC</div>
+           <div style="font-size:12px;margin-top:3px;">Provisional number ${bill.billNumber}. The final invoice number is assigned when this bill syncs.</div>
+         </div>`
+      : '';
+
     printWindow.document.write(`<!DOCTYPE html><html><head>
     <title>Invoice #${bill.billNumber} - ${businessName}</title>
     <style>
@@ -429,6 +550,8 @@ export default function POSPage() {
         </tr>
       </table>
 
+      ${offlineNotice}
+
       <!-- Bill Info + Customer -->
       <table style="width:100%;margin-bottom:24px;">
         <tr>
@@ -442,7 +565,7 @@ export default function POSPage() {
           </td>
           <td style="vertical-align:top;text-align:right;width:50%;">
             <table style="margin-left:auto;">
-              <tr><td style="font-size:12px;color:#999;padding:3px 12px 3px 0;">Invoice No</td><td style="font-size:14px;font-weight:700;color:#4f46e5;padding:3px 0;">#${bill.billNumber}</td></tr>
+              <tr><td style="font-size:12px;color:#999;padding:3px 12px 3px 0;">${invoiceNoLabel}</td><td style="font-size:14px;font-weight:700;color:${invoiceNoColor};padding:3px 0;">#${bill.billNumber}</td></tr>
               <tr><td style="font-size:12px;color:#999;padding:3px 12px 3px 0;">Date</td><td style="font-size:13px;font-weight:600;color:#333;padding:3px 0;">${dateStr}</td></tr>
               <tr><td style="font-size:12px;color:#999;padding:3px 12px 3px 0;">Time</td><td style="font-size:13px;font-weight:600;color:#333;padding:3px 0;">${timeStr}</td></tr>
               <tr><td style="font-size:12px;color:#999;padding:3px 12px 3px 0;">Payment</td><td style="padding:3px 0;"><span style="background:${bill.paymentMethod === 'cash' ? '#dcfce7' : bill.paymentMethod === 'upi' ? '#f3e8ff' : '#dbeafe'};color:${bill.paymentMethod === 'cash' ? '#166534' : bill.paymentMethod === 'upi' ? '#7e22ce' : '#1e40af'};padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;">${paymentLabel}</span></td></tr>
@@ -546,6 +669,7 @@ export default function POSPage() {
       .total-row.discount .val { color: #c00; }
       .grand { display: flex; justify-content: space-between; font-size: 16px; font-weight: 900; padding: 4px 0; }
       .payment { text-align: center; font-size: 11px; font-weight: 700; margin: 4px 0; padding: 3px; background: #eee; }
+      .offline { text-align: center; font-size: 11px; font-weight: 900; margin: 4px 0; padding: 3px; background: #fef3c7; color: #92400e; border: 1px dashed #92400e; }
       .footer { text-align: center; font-size: 10px; color: #666; margin-top: 6px; }
       .footer .ty { font-size: 12px; font-weight: 700; color: #000; }
       @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
@@ -555,7 +679,8 @@ export default function POSPage() {
         <div class="shop-addr">${businessAddress}</div>
       </div>
       <div class="dashed"></div>
-      <div class="info"><span class="label">Bill No:</span><span class="bold">#${bill.billNumber}</span></div>
+      ${bill._offline ? `<div class="offline">OFFLINE — PENDING SYNC</div>` : ''}
+      <div class="info"><span class="label">${bill._offline ? 'Provisional No:' : 'Bill No:'}</span><span class="bold">#${bill.billNumber}</span></div>
       <div class="info"><span class="label">Date:</span><span>${dateStr} ${timeStr}</span></div>
       ${bill.customerName && bill.customerName !== 'Walk-in' ? `<div class="info"><span class="label">Customer:</span><span>${bill.customerName}</span></div>` : ''}
       ${bill.customerPhone ? `<div class="info"><span class="label">Phone:</span><span>${bill.customerPhone}</span></div>` : ''}
@@ -995,16 +1120,22 @@ export default function POSPage() {
               <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-2 text-2xl text-white shadow-lg">✨</div>
               <h2 className="text-xl font-bold text-gray-900">Galaxy Unisex Saloon</h2>
               <p className="text-xs text-gray-500">Tambaram, Chennai</p>
-              <div className="mt-3 inline-flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold">
-                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Bill Generated Successfully
-              </div>
+              {lastBill._offline ? (
+                <div className="mt-3 inline-flex items-center gap-1.5 bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-semibold">
+                  <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span> OFFLINE — pending sync
+                </div>
+              ) : (
+                <div className="mt-3 inline-flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold">
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Bill Generated Successfully
+                </div>
+              )}
             </div>
 
             {/* Bill Info Row */}
             <div className="flex justify-between items-center py-3 border-b border-gray-100">
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Invoice No</p>
-                <p className="text-lg font-bold text-indigo-600">#{lastBill.billNumber}</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wide">{lastBill._offline ? 'Provisional No' : 'Invoice No'}</p>
+                <p className={cn('text-lg font-bold', lastBill._offline ? 'text-amber-600' : 'text-indigo-600')}>#{lastBill.billNumber}</p>
               </div>
               <div className="text-right">
                 <p className="text-xs text-gray-400 uppercase tracking-wide">Date & Time</p>
@@ -1115,6 +1246,13 @@ export default function POSPage() {
 
             {/* Footer */}
             <p className="text-center text-xs text-gray-400 py-2">Thank you for visiting Galaxy Salon! ✨</p>
+
+            {/* Offline notice — this bill is not on the server yet */}
+            {lastBill._offline && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-800">
+                Saved on this device only. The final invoice number is assigned once the connection returns and this bill syncs.
+              </div>
+            )}
 
             {/* Actions */}
             <div className="grid grid-cols-2 gap-3 pt-2">

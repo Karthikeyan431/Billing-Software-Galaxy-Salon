@@ -36,6 +36,11 @@ const billSchema = new mongoose.Schema({
   },
   status: { type: String, enum: ['completed', 'cancelled', 'refunded'], default: 'completed' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  // Idempotency key sent by the offline-capable POS when it replays a queued bill.
+  // MUST stay sparse: every bill created before this field existed, and every bill
+  // rung up online by a client that does not send one, has no clientRef, and a
+  // non-sparse unique index would reject all but the first of those null values.
+  clientRef: { type: String, index: true, unique: true, sparse: true },
 }, { timestamps: true });
 
 // Auto-increment bill number

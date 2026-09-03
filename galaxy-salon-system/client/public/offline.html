@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en-IN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#4263eb" />
+    <title>You are offline &middot; Galaxy Salon</title>
+    <!--
+      Everything here is inline on purpose. This page is served by the service worker
+      exactly when the network is gone, so a single external CSS or font request would
+      leave the cashier looking at unstyled text.
+    -->
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: linear-gradient(135deg, #4263eb 0%, #5a5fe0 45%, #6c5ce7 100%);
+        color: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+          Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        text-align: center;
+      }
+      .card {
+        width: 100%;
+        max-width: 420px;
+        padding: 36px 28px 32px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 20px;
+        background: rgba(26, 26, 46, 0.34);
+        box-shadow: 0 24px 60px rgba(20, 20, 50, 0.35);
+      }
+      .mark {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      .mark .sparkle {
+        font-size: 26px;
+        line-height: 1;
+      }
+      .sub {
+        margin: 6px 0 26px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+        color: #d4a843;
+      }
+      .badge {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 20px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.12);
+        font-size: 32px;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 22px;
+        font-weight: 700;
+      }
+      p {
+        margin: 0 0 16px;
+        font-size: 15px;
+        line-height: 1.55;
+        color: rgba(255, 255, 255, 0.86);
+      }
+      .note {
+        margin: 0 0 24px;
+        padding: 12px 14px;
+        border: 1px solid rgba(212, 168, 67, 0.4);
+        border-radius: 12px;
+        background: rgba(212, 168, 67, 0.14);
+        font-size: 13.5px;
+        line-height: 1.5;
+        color: #ffeec9;
+      }
+      button {
+        width: 100%;
+        padding: 13px 20px;
+        border: 0;
+        border-radius: 12px;
+        background: #ffffff;
+        color: #4263eb;
+        font-family: inherit;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 24px rgba(20, 20, 50, 0.3);
+      }
+      button:active {
+        transform: translateY(0);
+      }
+      .foot {
+        margin: 18px 0 0;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.62);
+      }
+      @media (max-width: 380px) {
+        .card {
+          padding: 28px 20px 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="badge" aria-hidden="true">&#128246;</div>
+      <div class="mark"><span class="sparkle" aria-hidden="true">&#10024;</span> Galaxy Salon</div>
+      <p class="sub">Unisex Saloon &amp; Beauty Academy</p>
+
+      <h1>You&rsquo;re offline</h1>
+      <p>
+        The connection dropped, so this page could not be loaded. Nothing is lost &mdash; the app
+        keeps working as soon as the network is back.
+      </p>
+      <p class="note">
+        Any bills already saved on this device are safe. They will sync automatically the moment
+        you are back online.
+      </p>
+
+      <button type="button" onclick="location.reload()">Try again</button>
+      <p class="foot">Galaxy Unisex Saloon &amp; Beauty Academy</p>
+    </main>
+  </body>
+</html>

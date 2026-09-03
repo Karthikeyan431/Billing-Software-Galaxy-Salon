@@ -31,6 +31,13 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    // The service worker's data cache holds customer PII and employee commission rows from
+    // this session; on a shared till the next person must not be able to be served them.
+    // Guarded twice over: there may be no serviceWorker API at all, and no controller yet
+    // on the very first load after registration.
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_DATA_CACHE' });
+    }
     setUser(null);
   }, []);
 

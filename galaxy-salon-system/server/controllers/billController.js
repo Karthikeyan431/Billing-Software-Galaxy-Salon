@@ -44,16 +44,50 @@ exports.getById = async (req, res) => {
 };
 
 exports.create = async (req, res) => {
+  const {
+    customer, customerName, customerPhone,
+    services, products,
+    subtotal, discount, discountType, tax, taxRate,
+    totalAmount, paymentMethod, splitPayment, clientRef, offlineCreatedAt,
+  } = req.body;
+
+  // A bill queued on an offline till is replayed later — sometimes the next morning. Stamping
+  // it with the sync time would drop the sale into the wrong day's summary and leave the cash
+  // drawer unreconcilable, so the client sends the real sale time and we honour it. Bounded
+  // deliberately: only a past timestamp within the last 30 days is accepted, so a wrong device
+  // clock (or a tampered request) cannot backdate revenue into a closed reporting period.
+  const saleTime = (() => {
+    if (!offlineCreatedAt) return null;
+    const parsed = new Date(offlineCreatedAt);
+    if (Number.isNaN(parsed.getTime())) return null;
+    const now = Date.now();
+    const ageMs = now - parsed.getTime();
+    if (ageMs < -5 * 60 * 1000) return null;          // more than 5 min in the future
+    if (ageMs > 30 * 24 * 60 * 60 * 1000) return null; // older than 30 days
+    return parsed;
+  })();
+
+  // Idempotency: the offline POS queues bills locally and replays them when the
+  // network returns, so the same bill can legitimately arrive twice. Answer a
+  // replay with the bill we already have -- checked BEFORE the transaction so a
+  // duplicate never decrements stock or awards loyalty points a second time.
+  if (clientRef) {
+    try {
+      const existingBill = await Bill.findOne({ clientRef })
+        .populate('customer', 'name phone')
+        .populate('createdBy', 'name');
+
+      if (existingBill) {
+        return res.status(200).json({ bill: existingBill, duplicate: true });
+      }
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const {
-      customer, customerName, customerPhone,
-      services, products,
-      subtotal, discount, discountType, tax, taxRate,
-      totalAmount, paymentMethod, splitPayment,
-    } = req.body;
-
     // Validate and reduce product stock (within transaction)
     for (const item of (products || [])) {
       const product = await Product.findById(item.product).session(session);
@@ -76,9 +110,13 @@ exports.create = async (req, res) => {
         services, products,
         subtotal, discount, discountType, tax, taxRate,
         totalAmount, paymentMethod, splitPayment,
+        clientRef,
         createdBy: req.user._id,
+        // Only set when replaying an offline bill; timestamps are disabled for that write so
+        // Mongoose does not overwrite the sale time with the current time.
+        ...(saleTime ? { createdAt: saleTime, updatedAt: new Date() } : {}),
       }],
-      { session }
+      saleTime ? { session, timestamps: false } : { session }
     );
 
     // Update customer visit history & loyalty points within transaction
@@ -103,6 +141,28 @@ exports.create = async (req, res) => {
     res.status(201).json({ bill: populatedBill });
   } catch (error) {
     await session.abortTransaction();
+
+    // Replay race: two copies of the same queued bill land at once, both clear the
+    // findOne above, and the loser's commit trips the unique clientRef index. The
+    // winner already wrote the real bill, so return that instead of a 500 -- a 500
+    // would make the client keep retrying a bill that has in fact been saved.
+    // Mongoose can surface the driver error nested under `cause` on a transaction,
+    // so check both places for the 11000 duplicate-key code.
+    const isDuplicateKey = error.code === 11000 || (error.cause && error.cause.code === 11000);
+    if (clientRef && isDuplicateKey) {
+      try {
+        const existingBill = await Bill.findOne({ clientRef })
+          .populate('customer', 'name phone')
+          .populate('createdBy', 'name');
+
+        if (existingBill) {
+          return res.status(200).json({ bill: existingBill, duplicate: true });
+        }
+      } catch (lookupError) {
+        // Fall through to the generic 500 below with the original error.
+      }
+    }
+
     res.status(500).json({ error: error.message });
   } finally {
     session.endSession();
